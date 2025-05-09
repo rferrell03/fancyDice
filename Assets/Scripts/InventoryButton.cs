@@ -20,14 +20,27 @@ public class InventoryButton : MonoBehaviour
                 objectToToggle.SetActive(isActive); // If the menu was open, enable the object; otherwise, disable it
             }
 
-            // Refresh dice display each time the menu is toggled
-            if (diceFaceDisplay != null)
+            // Refresh displays when opening the inventory
+            if (!isActive) // If we're opening the inventory
             {
-                diceFaceDisplay.RefreshDiceDisplay();
-            }
-            else
-            {
-                Debug.LogWarning("DiceFaceDisplay not assigned in the Inspector.");
+                if (diceFaceDisplay != null)
+                {
+                    diceFaceDisplay.RefreshDiceDisplay();
+                }
+                else
+                {
+                    Debug.LogWarning("DiceFaceDisplay not assigned in the Inspector.");
+                }
+
+                // Refresh inventory display
+                if (diceFaceDisplay.inventoryUIDisplay != null)
+                {
+                    diceFaceDisplay.inventoryUIDisplay.RefreshInventoryDisplay();
+                }
+                else
+                {
+                    Debug.LogWarning("InventoryUIDisplay not assigned in the Inspector.");
+                }
             }
         }
         else

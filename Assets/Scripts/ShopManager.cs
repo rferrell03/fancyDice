@@ -108,13 +108,41 @@ public class ShopManager : MonoBehaviour
         int addMod = Mathf.Max(0, Random.Range(0, (int)(moneyFactor / 100)));
         float multMod = Mathf.Max(minMultiplierMod, Random.Range(0f, moneyFactor / 10000f));
 
-
         Face f = new Face(
              value: Random.Range(minDiceValue, maxDiceValue),
              addMod: addMod,
              multMod: multMod
          );
-        f.specialEffect = new TriggerSameNum();
+
+        // 10% chance to get a special effect
+        if (Random.value < 0.1f)
+        {
+            // Randomly choose a special effect
+            int effectType = Random.Range(0, 5);
+            switch (effectType)
+            {
+                case 0:
+                    f.specialEffect = new TriggerSameNum();
+                    break;
+                case 1:
+                    f.specialEffect = new CascadingTrigger();
+                    break;
+                case 2:
+                    f.specialEffect = new ComboTrigger();
+                    break;
+                case 3:
+                    f.specialEffect = new EvenTrigger();
+                    break;
+                case 4:
+                    f.specialEffect = new OddTrigger();
+                    break;
+            }
+        }
+        else
+        {
+            f.specialEffect = null;
+        }
+
         return f;
     }
 
@@ -183,10 +211,29 @@ public class ShopManager : MonoBehaviour
 
         gameManager.SpendMoney(cost);
         inventoryManager.AddFace(purchasedFace);
+        
+        // Find the spawn point index by comparing positions
+        int spawnIndex = -1;
+        for (int i = 0; i < spawnPoints.Length; i++)
+        {
+            if (Vector3.Distance(shopItem.transform.position, spawnPoints[i].position) < 0.1f)
+            {
+                spawnIndex = i;
+                break;
+            }
+        }
+
         ReturnToPool(shopItem);
         
-        GameObject newItem = GetPooledItem();
-        ConfigureShopItem(newItem, System.Array.IndexOf(spawnPoints, shopItem.transform));
+        if (spawnIndex != -1)
+        {
+            GameObject newItem = GetPooledItem();
+            ConfigureShopItem(newItem, spawnIndex);
+        }
+        else
+        {
+            Debug.LogError("Could not find spawn point for purchased item!");
+        }
     }
 
     private void OnDestroy()
