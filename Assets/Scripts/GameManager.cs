@@ -21,7 +21,7 @@ public class GameManager : MonoBehaviour
     public List<Dice> diceList = new List<Dice>();
 
     // Track the current theoretical maximum value a single face can produce
-    private float currentMaxFaceValue = 1f; // Initialize to a low default
+    public float currentMaxFaceValue = 1f; // Initialize to a low default
 
     private void Start()
     {
@@ -175,27 +175,9 @@ public class GameManager : MonoBehaviour
                 }
 
                 // Trigger faces and get actual money gained
-                float topMoney = currentDice.finalRollResult.top.Trigger(currentDice, floatingTextManager);
-                float leftMoney = currentDice.finalRollResult.left.Trigger(currentDice, floatingTextManager);
-                float rightMoney = currentDice.finalRollResult.right.Trigger(currentDice, floatingTextManager);
-
-                // Display floating text, passing the *actual money gained* for value
-                // and the *current tracked max potential face value* for max value.
-                if (currentDice.topSpawn != null)
-                    floatingTextManager.CreateFloatingText($"+{topMoney:0.#}", currentDice.topSpawn, topMoney, currentMaxFaceValue); // Pass money & max value
-                else
-                    Debug.LogWarning($"TopSpawn not assigned on {currentDice.name}. Cannot create floating text.");
-
-                if (currentDice.leftSpawn != null)
-                    floatingTextManager.CreateFloatingText($"+{leftMoney:0.#}", currentDice.leftSpawn, leftMoney, currentMaxFaceValue); // Pass money & max value
-                else
-                    Debug.LogWarning($"LeftSpawn not assigned on {currentDice.name}. Cannot create floating text.");
-
-                if (currentDice.rightSpawn != null)
-                    floatingTextManager.CreateFloatingText($"+{rightMoney:0.#}", currentDice.rightSpawn, rightMoney, currentMaxFaceValue); // Pass money & max value
-                else
-                    Debug.LogWarning($"RightSpawn not assigned on {currentDice.name}. Cannot create floating text.");
-
+                float topMoney = currentDice.finalRollResult.top.Trigger(currentDice, floatingTextManager, 0, currentMaxFaceValue);
+                float leftMoney = currentDice.finalRollResult.left.Trigger(currentDice, floatingTextManager, 1, currentMaxFaceValue);
+                float rightMoney = currentDice.finalRollResult.right.Trigger(currentDice, floatingTextManager, 2, currentMaxFaceValue);
 
                 // Accumulate the total money gained
                 totalRollMoney += topMoney + leftMoney + rightMoney;

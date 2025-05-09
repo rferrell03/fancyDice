@@ -4,11 +4,11 @@ public class RollButton : MonoBehaviour
 {
     public GameManager gameManager;
 
-    private bool isRolling = false;  // Prevents multiple clicks
+    private bool isRolling = false;
 
     private void OnMouseDown()
     {
-        if (isRolling) return;  // Ignore clicks during animation
+        if (isRolling) return;
 
         if (gameManager != null)
         {
@@ -28,11 +28,9 @@ public class RollButton : MonoBehaviour
     {
         gameManager.RollAllDice();
 
-        // Ensure we wait for the dice animation duration
-        float rollTime = 7 * 0.1f;  // 7 cycles, 0.1 seconds each
+        float rollTime = 7 * 0.1f;
         yield return new WaitForSeconds(rollTime);
 
-        // Re-enable the button
         isRolling = false;
     }
 }

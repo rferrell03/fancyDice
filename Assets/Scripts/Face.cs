@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 [System.Serializable]
 public class Face
@@ -12,7 +13,7 @@ public class Face
     public Sprite LeftSprite { get; private set; }
     public Sprite RightSprite { get; private set; }
     public Sprite inventorySprite { get; set; }
-
+    public SpecialEffect specialEffect { get; set; }
     private const string spriteSheetPath = "FixedFaces";      // For main dice faces
     private const string inventorySpriteSheetPath = "Dice";   // For inventory display
 
@@ -27,9 +28,26 @@ public class Face
     /// <summary>
     /// Returns the total money produced by triggering this face.
     /// </summary>
-    public float Trigger(Dice dice, FloatingTextManager floatingTextManager)
+    public float Trigger(Dice dice, FloatingTextManager floatingTextManager, int side, float maxValue, HashSet<Face> triggerChain = null)
     {
-        float moneyGained = (Value + addModifier) * multModifier;
+        float specialEffectMoney = 0;
+        if (specialEffect != null)
+        {
+            Debug.Log("Special effect activated");
+            specialEffectMoney = specialEffect.Activate(this, triggerChain);
+            Debug.Log("Special effect activated");
+        }
+        if (side == 0)
+        {
+            floatingTextManager.CreateFloatingText($"+{Value}", dice.topSpawn, Value, maxValue);
+        }else if (side == 1)
+        {
+            floatingTextManager.CreateFloatingText($"+{Value}", dice.leftSpawn, Value, maxValue);
+        }else if (side == 2)
+        {
+            floatingTextManager.CreateFloatingText($"+{Value}", dice.rightSpawn, Value, maxValue);
+        }
+        float moneyGained = ((Value + addModifier) * multModifier) + specialEffectMoney;
         return moneyGained;
     }
 
@@ -101,24 +119,25 @@ public class Face
     {
         float redIntensity = Mathf.Clamp01((multModifier - 1f) / 10f);
         float blueIntensity = Mathf.Clamp01(addModifier / 10f);
+        float yellowIntensity = specialEffect != null ? 0.3f : 0f;
 
-        if (redIntensity > 0f && blueIntensity > 0f)
+        Color baseColor = Color.white;
+        
+        if (redIntensity > 0f)
         {
-            Color redTint = Color.Lerp(Color.white, Color.red, redIntensity);
-            Color blueTint = Color.Lerp(Color.white, Color.blue, blueIntensity);
-            return Color.Lerp(redTint, blueTint, 0.5f);
+            baseColor = Color.Lerp(baseColor, Color.red, redIntensity);
         }
-        else if (redIntensity > 0f)
+        
+        if (blueIntensity > 0f)
         {
-            return Color.Lerp(Color.white, Color.red, redIntensity);
+            baseColor = Color.Lerp(baseColor, Color.blue, blueIntensity);
         }
-        else if (blueIntensity > 0f)
+        
+        if (yellowIntensity > 0f)
         {
-            return Color.Lerp(Color.white, Color.blue, blueIntensity);
+            baseColor = Color.Lerp(baseColor, Color.yellow, yellowIntensity);
         }
-        else
-        {
-            return Color.white;
-        }
+
+        return baseColor;
     }
 }

@@ -15,14 +15,22 @@ public class DiceFaceDisplay : MonoBehaviour
 
     private Sprite[] _spriteSheet;
 
-    private int _selectedDiceIndex = -1;
-    private int _selectedFaceIndex = -1;
+    // Selection state
+    private class SelectionState
+    {
+        public bool IsDiceFace => DiceIndex != -1;
+        public bool IsInventoryFace => InventoryFace != null;
+        public bool HasSelection => IsDiceFace || IsInventoryFace;
+
+        public int DiceIndex = -1;
+        public int FaceIndex = -1;
+        public Face InventoryFace = null;
+        public Image SelectedImage = null;
+    }
+    private SelectionState _selection = new SelectionState();
 
     public InventoryManager inventoryManager;
     public InventoryUIDisplay inventoryUIDisplay;
-
-    private Image _selectedDiceImage;
-    private Image _selectedInventoryImage;
 
     void Awake()
     {
@@ -69,6 +77,7 @@ public class DiceFaceDisplay : MonoBehaviour
 
     public void DisplayDiceFaces()
     {
+        // Clear existing faces
         foreach (List<Transform> diceTransforms in _faceTransforms)
         {
             foreach (Transform faceTransform in diceTransforms)
@@ -83,6 +92,7 @@ public class DiceFaceDisplay : MonoBehaviour
             }
         }
 
+        // Display current faces
         for (int diceIndex = 0; diceIndex < 5; diceIndex++)
         {
             if (diceIndex < gameManager.diceList.Count && gameManager.diceList[diceIndex] != null)
@@ -91,58 +101,51 @@ public class DiceFaceDisplay : MonoBehaviour
                 for (int faceIndex = 0; faceIndex < 6; faceIndex++)
                 {
                     Face face = dice.faces[faceIndex];
-                    GameObject inventorySpriteObj = Instantiate(inventorySpritePrefab, _faceTransforms[diceIndex][faceIndex]);
-                    Image inventoryImage = inventorySpriteObj.GetComponent<Image>();
-
-                    if (inventoryImage != null)
-                    {
-                        inventoryImage.sprite = face.inventorySprite;
-                        // Apply the modified color here as well.
-                        inventoryImage.color = face.GetModifiedColor();
-                    }
-                    else
-                    {
-                        Debug.LogError("Inventory sprite prefab does not have an Image component!");
-                        Destroy(inventorySpriteObj);
-                    }
+                    CreateFaceDisplay(diceIndex, faceIndex, face);
                 }
             }
             else
             {
                 for (int faceIndex = 0; faceIndex < 6; faceIndex++)
                 {
-                    GameObject inventorySpriteObj = Instantiate(inventorySpritePrefab, _faceTransforms[diceIndex][faceIndex]);
-                    Image inventoryImage = inventorySpriteObj.GetComponent<Image>();
-                    if (inventoryImage != null)
-                    {
-                        inventoryImage.sprite = GetSpriteByName("Dice_0");
-                        // Optionally, set a default color.
-                        inventoryImage.color = Color.white;
-                    }
-                    else
-                    {
-                        Debug.LogError("Inventory sprite prefab does not have an Image component!");
-                        Destroy(inventorySpriteObj);
-                    }
+                    CreateFaceDisplay(diceIndex, faceIndex, null);
                 }
             }
         }
     }
 
+    private void CreateFaceDisplay(int diceIndex, int faceIndex, Face face)
+    {
+        GameObject inventorySpriteObj = Instantiate(inventorySpritePrefab, _faceTransforms[diceIndex][faceIndex]);
+        Image inventoryImage = inventorySpriteObj.GetComponent<Image>();
+
+        if (inventoryImage != null)
+        {
+            if (face != null)
+            {
+                inventoryImage.sprite = face.inventorySprite;
+                inventoryImage.color = face.GetModifiedColor();
+            }
+            else
+            {
+                inventoryImage.sprite = GetSpriteByName("Dice_0");
+                inventoryImage.color = Color.white;
+            }
+        }
+        else
+        {
+            Debug.LogError("Inventory sprite prefab does not have an Image component!");
+            Destroy(inventorySpriteObj);
+        }
+    }
 
     private Sprite GetSpriteByName(string name)
     {
-        if (_spriteSheet == null)
-        {
-            return null;
-        }
+        if (_spriteSheet == null) return null;
 
         foreach (Sprite sprite in _spriteSheet)
         {
-            if (sprite.name == name)
-            {
-                return sprite;
-            }
+            if (sprite.name == name) return sprite;
         }
         Debug.LogWarning($"Sprite '{name}' not found in sprite sheet '{spriteSheetName}'");
         return null;
@@ -162,13 +165,7 @@ public class DiceFaceDisplay : MonoBehaviour
                         Image image = faceTransform.GetComponentInChildren<Image>();
                         if (image != null)
                         {
-                            EventTrigger trigger = image.gameObject.AddComponent<EventTrigger>();
-                            EventTrigger.Entry entry = new EventTrigger.Entry();
-                            entry.eventID = EventTriggerType.PointerClick;
-                            int localDiceIndex = diceIndex;
-                            int localFaceIndex = faceIndex;
-                            entry.callback.AddListener((data) => { OnDiceFaceClicked(localDiceIndex, localFaceIndex); });
-                            trigger.triggers.Add(entry);
+                            SetupClickHandler(image, diceIndex, faceIndex);
                         }
                         else
                         {
@@ -180,95 +177,166 @@ public class DiceFaceDisplay : MonoBehaviour
         }
     }
 
+    private void SetupClickHandler(Image image, int diceIndex, int faceIndex)
+    {
+        EventTrigger trigger = image.gameObject.AddComponent<EventTrigger>();
+        EventTrigger.Entry entry = new EventTrigger.Entry();
+        entry.eventID = EventTriggerType.PointerClick;
+        int localDiceIndex = diceIndex;
+        int localFaceIndex = faceIndex;
+        entry.callback.AddListener((data) => { OnDiceFaceClicked(localDiceIndex, localFaceIndex); });
+        trigger.triggers.Add(entry);
+    }
+
     private void OnDiceFaceClicked(int diceIndex, int faceIndex)
     {
-        ResetDiceImageColor();
-        _selectedDiceIndex = diceIndex;
-        _selectedFaceIndex = faceIndex;
-        _selectedDiceImage = _faceTransforms[diceIndex][faceIndex].GetComponentInChildren<Image>();
-        DarkenImage(_selectedDiceImage);
-        Debug.Log($"Dice face clicked: Dice {diceIndex}, Face {faceIndex}");
+        // If clicking the same face, deselect it
+        if (_selection.IsDiceFace && _selection.DiceIndex == diceIndex && _selection.FaceIndex == faceIndex)
+        {
+            ClearSelection();
+            return;
+        }
+
+        // If clicking a different face on the same dice, just move selection
+        if (_selection.IsDiceFace && _selection.DiceIndex == diceIndex)
+        {
+            UpdateDiceFaceSelection(diceIndex, faceIndex);
+            return;
+        }
+
+        // If we have a selected inventory face, swap with the clicked dice face
+        if (_selection.IsInventoryFace)
+        {
+            SwapDiceAndInventoryFaces(diceIndex, faceIndex, _selection.InventoryFace);
+            return;
+        }
+
+        // If we have a selected dice face, swap with the clicked dice face
+        if (_selection.IsDiceFace)
+        {
+            SwapDiceFaces(_selection.DiceIndex, _selection.FaceIndex, diceIndex, faceIndex);
+            return;
+        }
+
+        // Otherwise, just select the clicked face
+        UpdateDiceFaceSelection(diceIndex, faceIndex);
+    }
+
+    private void UpdateDiceFaceSelection(int diceIndex, int faceIndex)
+    {
+        ClearSelection();
+        _selection.DiceIndex = diceIndex;
+        _selection.FaceIndex = faceIndex;
+        _selection.SelectedImage = _faceTransforms[diceIndex][faceIndex].GetComponentInChildren<Image>();
+        if (_selection.SelectedImage != null)
+        {
+            DarkenImage(_selection.SelectedImage);
+        }
+        else
+        {
+            Debug.LogError($"Failed to get Image component for dice {diceIndex}, face {faceIndex}");
+        }
+    }
+
+    private void SwapDiceFaces(int dice1Index, int face1Index, int dice2Index, int face2Index)
+    {
+        Dice dice1 = gameManager.diceList[dice1Index];
+        Dice dice2 = gameManager.diceList[dice2Index];
+
+        Face temp = dice1.faces[face1Index];
+        dice1.faces[face1Index] = dice2.faces[face2Index];
+        dice2.faces[face2Index] = temp;
+
+        // Clear selection before refreshing display
+        ClearSelection();
+        RefreshDiceDisplay();
+    }
+
+    private void SwapDiceAndInventoryFaces(int diceIndex, int faceIndex, Face inventoryFace)
+    {
+        Dice dice = gameManager.diceList[diceIndex];
+        Face oldFace = dice.faces[faceIndex];
+
+        // Remove the inventory face first
+        inventoryManager.RemoveFace(inventoryFace);
+        
+        // Then add the old face to inventory
+        inventoryManager.AddFace(oldFace);
+        
+        // Finally update the dice face
+        dice.faces[faceIndex] = inventoryFace;
+
+        // Clear selection before refreshing displays
+        ClearSelection();
+        RefreshDiceDisplay();
+        inventoryUIDisplay.RefreshInventoryDisplay();
     }
 
     public void SwapFaces(Face inventoryFace, Image inventoryImage)
     {
-        if (_selectedDiceIndex != -1 && _selectedFaceIndex != -1)
+        // If clicking the same inventory face, deselect it
+        if (_selection.IsInventoryFace && _selection.SelectedImage == inventoryImage)
         {
-            Dice dice = gameManager.diceList[_selectedDiceIndex];
-            Face oldFace = dice.faces[_selectedFaceIndex];
-
-            dice.faces[_selectedFaceIndex] = inventoryFace;
-
-            inventoryManager.AddFace(oldFace);
-            inventoryManager.RemoveFace(inventoryFace);
-
-            RefreshDiceDisplay();
-            inventoryUIDisplay.RefreshInventoryDisplay();
-
-            ResetDiceImageColor();
-            ResetInventoryImageColor();
-
-            _selectedDiceIndex = -1;
-            _selectedFaceIndex = -1;
-            _selectedDiceImage = null;
-            _selectedInventoryImage = null;
+            ClearSelection();
+            return;
         }
-        else if (_selectedInventoryImage != null && _selectedDiceIndex == -1)
+
+        // If we have a selected dice face, swap with the inventory face
+        if (_selection.IsDiceFace)
         {
-            Dice dice = gameManager.diceList[_selectedDiceIndex];
-            Face oldFace = dice.faces[_selectedFaceIndex];
-
-            dice.faces[_selectedFaceIndex] = inventoryFace;
-
-            inventoryManager.AddFace(oldFace);
-            inventoryManager.RemoveFace(inventoryFace);
-
-            RefreshDiceDisplay();
-            inventoryUIDisplay.RefreshInventoryDisplay();
-
-            ResetDiceImageColor();
-            ResetInventoryImageColor();
-
-            _selectedDiceIndex = -1;
-            _selectedFaceIndex = -1;
-            _selectedDiceImage = null;
-            _selectedInventoryImage = null;
+            SwapDiceAndInventoryFaces(_selection.DiceIndex, _selection.FaceIndex, inventoryFace);
+            return;
         }
-        else if (inventoryImage != null)
+
+        // Otherwise, just select the inventory face
+        ClearSelection();
+        _selection.InventoryFace = inventoryFace;
+        _selection.SelectedImage = inventoryImage;
+        if (_selection.SelectedImage != null)
         {
-            ResetInventoryImageColor();
-            _selectedInventoryImage = inventoryImage;
-            DarkenImage(_selectedInventoryImage);
+            DarkenImage(_selection.SelectedImage);
         }
         else
         {
-            Debug.LogError("No dice face selected to swap.");
+            Debug.LogError("Failed to get Image component for inventory face");
         }
+    }
+
+    private void ClearSelection()
+    {
+        // Reset all face colors to white
+        for (int diceIndex = 0; diceIndex < 5; diceIndex++)
+        {
+            if (diceIndex < gameManager.diceList.Count && gameManager.diceList[diceIndex] != null)
+            {
+                for (int faceIndex = 0; faceIndex < 6; faceIndex++)
+                {
+                    Transform faceTransform = _faceTransforms[diceIndex][faceIndex];
+                    if (faceTransform != null)
+                    {
+                        Image image = faceTransform.GetComponentInChildren<Image>();
+                        if (image != null)
+                        {
+                            image.color = Color.white;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Reset selection state
+        _selection = new SelectionState();
     }
 
     private void DarkenImage(Image image)
     {
         if (image != null)
         {
-            image.color = new Color(0.5f, 0.5f, 0.5f);
-        }
-    }
-
-    private void ResetDiceImageColor()
-    {
-        if (_selectedDiceImage != null)
-        {
-            _selectedDiceImage.color = Color.white;
-            _selectedDiceImage = null;
-        }
-    }
-
-    private void ResetInventoryImageColor()
-    {
-        if (_selectedInventoryImage != null)
-        {
-            _selectedInventoryImage.color = Color.white;
-            _selectedInventoryImage = null;
+            // Store the original color's alpha
+            float alpha = image.color.a;
+            // Create a darker version while preserving alpha
+            Color darkerColor = new Color(0.5f, 0.5f, 0.5f, alpha);
+            image.color = darkerColor;
         }
     }
 }

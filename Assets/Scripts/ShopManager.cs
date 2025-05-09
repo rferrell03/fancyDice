@@ -1,87 +1,203 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Collections.Generic;
 
 public class ShopManager : MonoBehaviour
 {
-    public GameObject shopItemPrefab;  // The prefab for a shop item
-    public Transform[] spawnPoints;    // Points where items should spawn (relative to the Canvas)
-    public Transform shopPanel;        // Reference to the "Shop" panel (where all items will be parented to)
-    public GameManager gameManager;    // Reference to GameManager for player money
-    public InventoryManager inventoryManager; // Reference to InventoryManager
+    [Header("References")]
+    [SerializeField] private GameObject shopItemPrefab;
+    [SerializeField] private Transform[] spawnPoints;
+    [SerializeField] private Transform shopPanel;
+    [SerializeField] private GameManager gameManager;
+    [SerializeField] private InventoryManager inventoryManager;
+
+    [Header("Shop Settings")]
+    [SerializeField] private int shopItemCount = 3;
+    [SerializeField] private float minMultiplierMod = 0.5f;
+    [SerializeField] private int minDiceValue = 1;
+    [SerializeField] private int maxDiceValue = 7;
+
+    private Queue<GameObject> shopItemPool;
+    private const int INITIAL_POOL_SIZE = 5;
+
+    private void Awake()
+    {
+        ValidateReferences();
+        InitializeObjectPool();
+    }
 
     private void Start()
     {
         SetupShop();
     }
 
+    private void ValidateReferences()
+    {
+        if (shopItemPrefab == null) Debug.LogError("Shop Item Prefab not assigned!");
+        if (spawnPoints == null || spawnPoints.Length == 0) Debug.LogError("Spawn Points not assigned!");
+        if (shopPanel == null) Debug.LogError("Shop Panel not assigned!");
+        if (gameManager == null) Debug.LogError("Game Manager not assigned!");
+        if (inventoryManager == null) Debug.LogError("Inventory Manager not assigned!");
+    }
+
+    private void InitializeObjectPool()
+    {
+        shopItemPool = new Queue<GameObject>();
+        for (int i = 0; i < INITIAL_POOL_SIZE; i++)
+        {
+            CreatePooledItem();
+        }
+    }
+
+    private void CreatePooledItem()
+    {
+        GameObject item = Instantiate(shopItemPrefab, shopPanel);
+        item.SetActive(false);
+        shopItemPool.Enqueue(item);
+    }
+
+    private GameObject GetPooledItem()
+    {
+        if (shopItemPool.Count == 0)
+        {
+            CreatePooledItem();
+        }
+        return shopItemPool.Dequeue();
+    }
+
+    private void ReturnToPool(GameObject item)
+    {
+        item.SetActive(false);
+        shopItemPool.Enqueue(item);
+    }
+
     private void SetupShop()
     {
-        // Generate 3 random Face objects for the shop items
-        for (int i = 0; i < 3; i++) // Always spawn 3 items
+        for (int i = 0; i < shopItemCount; i++)
         {
-            // Generate a random addMod based on player money
-            int addMod = Mathf.Max(0, Random.Range(0, (int)gameManager.money / 100));
-
-            // Generate a random multMod based on player money
-            float multMod = Mathf.Max(0.5f, Random.Range(0f, gameManager.money / 10000f));
-
-            // Create a new Face with the random addMod and multMod
-            Face newFace = new Face(value: Random.Range(1, 7), addMod: addMod, multMod: multMod);
-
-            // Instantiate the prefab and parent it to the Shop panel
-            GameObject shopItem = Instantiate(shopItemPrefab, shopPanel);
-
-            // Set the position of the item based on the spawn point, maintaining the Canvas/UI scaling
-            shopItem.transform.position = spawnPoints[i].position;
-
-            // Get the Image component and change the sprite
-            Image itemImage = shopItem.GetComponentInChildren<Image>();  // Assuming Image is a child of the prefab
-            if (itemImage != null)
+            if (i >= spawnPoints.Length)
             {
-                itemImage.sprite = newFace.inventorySprite;  // Set the sprite from the Face object
+                Debug.LogWarning($"Not enough spawn points for shop item {i}");
+                continue;
             }
 
-            // Get the TextMeshPro components (assuming there are 2 for name and price)
-            TextMeshProUGUI[] textComponents = shopItem.GetComponentsInChildren<TextMeshProUGUI>();
-            if (textComponents.Length >= 3)
-            {
-                // Set the text for name and price (assuming the first text is the name, and the second is the price)
-                textComponents[0].text = "$ " + newFace.GetCost().ToString("F2");  // Display the cost of the item
-                textComponents[1].text = "+ " + newFace.addModifier + " per roll"; // Display the add modifier
-                textComponents[2].text = "x " + newFace.multModifier + " per roll"; // Display the multiplier modifier
-            }
+            GameObject shopItem = GetPooledItem();
+            ConfigureShopItem(shopItem, i);
+        }
+    }
 
-            // Get the purchase button and add a listener to it
-            Button purchaseButton = shopItem.GetComponentInChildren<Button>();
-            if (purchaseButton != null)
+    private void ConfigureShopItem(GameObject shopItem, int index)
+    {
+        shopItem.SetActive(true);
+        shopItem.transform.position = spawnPoints[index].position;
+
+        // Generate face with appropriate modifiers
+        Face newFace = GenerateRandomFace();
+
+        // Configure UI elements
+        ConfigureUIElements(shopItem, newFace);
+
+        // Setup purchase button
+        SetupPurchaseButton(shopItem, newFace);
+    }
+
+    private Face GenerateRandomFace()
+    {
+        float moneyFactor = gameManager.money;
+        int addMod = Mathf.Max(0, Random.Range(0, (int)(moneyFactor / 100)));
+        float multMod = Mathf.Max(minMultiplierMod, Random.Range(0f, moneyFactor / 10000f));
+
+
+        Face f = new Face(
+             value: Random.Range(minDiceValue, maxDiceValue),
+             addMod: addMod,
+             multMod: multMod
+         );
+        f.specialEffect = new TriggerSameNum();
+        return f;
+    }
+
+    private void ConfigureUIElements(GameObject shopItem, Face face)
+    {
+        Image itemImage = shopItem.GetComponentInChildren<Image>();
+        if (itemImage != null)
+        {
+            itemImage.sprite = face.inventorySprite;
+            itemImage.color = face.GetModifiedColor();
+        }
+
+        TextMeshProUGUI[] textComponents = shopItem.GetComponentsInChildren<TextMeshProUGUI>();
+        if (textComponents.Length >= 4)
+        {
+            textComponents[0].text = $"$ {face.GetCost():F2}";
+            textComponents[1].text = $"+ {face.addModifier} per roll";
+            textComponents[2].text = $"x {face.multModifier:F2} per roll";
+            
+            // Add special effect description
+            string effectDesc = "No special effect";
+            if (face.specialEffect != null)
             {
-                purchaseButton.onClick.AddListener(() => OnItemPurchased(newFace, newFace.GetCost(), shopItem));
+                if (face.specialEffect is TriggerSameNum)
+                {
+                    effectDesc = "(Special) Mirror \n Triggers all matching numbers";
+                }
+                else if (face.specialEffect is CascadingTrigger)
+                {
+                    effectDesc = "(Special) Cascade \n Triggers next higher numbers";
+                }
+                else if (face.specialEffect is ComboTrigger)
+                {
+                    effectDesc = "(Special) Poker \n Triggers all if 3-of-a-kind or straight";
+                }
+                else if (face.specialEffect is EvenTrigger)
+                {
+                    effectDesc = "(Special) Even \n Triggers all even numbers";
+                }
+                else if (face.specialEffect is OddTrigger)
+                {
+                    effectDesc = "(Special) Odd \n Triggers all odd numbers";
+                }
             }
+            textComponents[3].text = effectDesc;
+        }
+    }
+
+    private void SetupPurchaseButton(GameObject shopItem, Face face)
+    {
+        Button purchaseButton = shopItem.GetComponentInChildren<Button>();
+        if (purchaseButton != null)
+        {
+            purchaseButton.onClick.RemoveAllListeners();
+            purchaseButton.onClick.AddListener(() => OnItemPurchased(face, face.GetCost(), shopItem));
         }
     }
 
     private void OnItemPurchased(Face purchasedFace, float cost, GameObject shopItem)
     {
-        // 1. Reduce the player's money by calling SpendMoney
-        gameManager.SpendMoney(cost);
-
-        // 2. Add the purchased face to the inventory
-        inventoryManager.AddFace(purchasedFace);
-
-        // 3. Reset the shop (clear existing items and generate new ones)
-        ResetShop();
-    }
-
-    private void ResetShop()
-    {
-        // Clear all current items in the shop
-        foreach (Transform child in shopPanel)
+        if (gameManager.money < cost)
         {
-            Destroy(child.gameObject);
+            Debug.LogWarning("Not enough money to purchase item!");
+            return;
         }
 
-        // Generate new items for the shop
-        SetupShop();
+        gameManager.SpendMoney(cost);
+        inventoryManager.AddFace(purchasedFace);
+        ReturnToPool(shopItem);
+        
+        GameObject newItem = GetPooledItem();
+        ConfigureShopItem(newItem, System.Array.IndexOf(spawnPoints, shopItem.transform));
+    }
+
+    private void OnDestroy()
+    {
+        while (shopItemPool.Count > 0)
+        {
+            GameObject item = shopItemPool.Dequeue();
+            if (item != null)
+            {
+                Destroy(item);
+            }
+        }
     }
 }
